@@ -1,0 +1,25 @@
+{
+  "name": "編集",
+  "short_name": "編集",
+  "description": "",
+  "start_url": "/hensyu/",
+  "scope": "/hensyu/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#0a84ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/hensyu/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/hensyu/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
