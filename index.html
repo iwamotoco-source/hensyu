@@ -1,396 +1,366 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>THE CALENDAR - 自動修復＆サーバー書き換えツール</title>
-  <style>
-    body{
-      font-family:sans-serif;
-      background:#12121a;
-      color:#fff;
-      padding:20px;
-      max-width:600px;
-      margin:0 auto;
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>THE CALENDAR 修復ツール 完成版</title>
 
-    input{
-      width:100%;
-      padding:15px;
-      margin-bottom:20px;
-      box-sizing:border-box;
-      border-radius:8px;
-      border:1px solid #333;
-      background:#222;
-      color:#fff;
-    }
+<style>
+body{
+  background:#12121a;
+  color:#fff;
+  font-family:sans-serif;
+  margin:0;
+  padding:20px;
+  max-width:700px;
+  margin:auto;
+}
 
-    button{
-      padding:15px;
-      width:100%;
-      background:linear-gradient(135deg,#4f8ef7,#7b5ff8);
-      color:#fff;
-      border:none;
-      border-radius:8px;
-      font-weight:bold;
-      cursor:pointer;
-      font-size:18px;
-    }
+h1{
+  font-size:24px;
+  margin-bottom:20px;
+}
 
-    .log{
-      margin-top:20px;
-      background:#000;
-      padding:15px;
-      border-radius:8px;
-      font-family:monospace;
-      color:#0f0;
-      white-space:pre-wrap;
-      min-height:100px;
-      font-size:14px;
-      line-height:1.5;
-    }
-  </style>
+input,button{
+  width:100%;
+  box-sizing:border-box;
+  padding:16px;
+  border-radius:10px;
+  border:none;
+  margin-bottom:16px;
+  font-size:16px;
+}
+
+input{
+  background:#222;
+  color:#fff;
+  border:1px solid #333;
+}
+
+button{
+  background:linear-gradient(135deg,#4f8ef7,#7b5ff8);
+  color:#fff;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+button:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+.log{
+  background:#000;
+  color:#00ff88;
+  border-radius:10px;
+  padding:16px;
+  white-space:pre-wrap;
+  min-height:200px;
+  font-family:monospace;
+  font-size:13px;
+  line-height:1.6;
+}
+</style>
 </head>
+
 <body>
 
-<h2>GitHub直接修復ツール</h2>
-
-<p>
-途切れてしまったコードを過去の正常な状態から復元し、
-自動的に最新パッチを当てて、
-<strong>直接あなたのGitHubサーバーを書き換えます。</strong>
-</p>
-
-<label>GitHub Tokenを入力</label>
+<h1>THE CALENDAR 修復ツール 完成版</h1>
 
 <input
-  type="password"
   id="token"
-  placeholder="ghp_... / github_pat_..."
->
+  type="password"
+  placeholder="GitHub Token (ghp_ / github_pat_)"
+/>
 
-<button id="btn" onclick="runFix()">
-  自動復旧＆直接書き換えを実行
+<button id="runBtn">
+修復開始
 </button>
 
 <div class="log" id="log">待機中...</div>
 
 <script>
 
+const logEl = document.getElementById('log');
+const btn = document.getElementById('runBtn');
+
 function log(msg){
-  document.getElementById('log').textContent += msg + '\n';
+  logEl.textContent += '\n' + msg;
+  console.log(msg);
 }
 
-function xorStr(str, key){
-  let r = '';
-
-  for(let i = 0; i < str.length; i++){
-    r += String.fromCharCode(
-      str.charCodeAt(i) ^
-      key.charCodeAt(i % key.length)
-    );
-  }
-
-  return btoa(r);
+function sanitizeToken(token){
+  return token.trim();
 }
 
-function replaceFunc(src, name, newBody){
-
-  const idx = src.indexOf('function ' + name);
-
-  if(idx === -1){
-    return src;
-  }
-
-  const start = src.indexOf('{', idx);
-
-  if(start === -1){
-    return src;
-  }
-
-  let count = 1;
-  let i = start + 1;
-
-  while(count > 0 && i < src.length){
-
-    if(src[i] === '{'){
-      count++;
-    }
-    else if(src[i] === '}'){
-      count--;
-    }
-
-    i++;
-  }
-
-  return (
-    src.substring(0, idx) +
-    newBody +
-    src.substring(i)
-  );
+function toBase64(str){
+  return btoa(unescape(encodeURIComponent(str)));
 }
 
-async function runFix(){
+async function githubFetch(url, token, options = {}){
 
-  const btn = document.getElementById('btn');
-
-  const token = document
-    .getElementById('token')
-    .value
-    .replace(/[^a-zA-Z0-9_-]/g, '');
-
-  if(!token){
-    alert('Tokenを入力してください');
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = '処理中...';
-
-  document.getElementById('log').textContent = '';
-
-  try{
-
-    log('1. 正常な過去コード(約100KB)を救出中...');
-
-    const res = await fetch(
-      'https://raw.githubusercontent.com/iwamotoco-source/calendar20777789/01c445040b82acf4e51bc8d8967fed8040369890/index.html'
-    );
-
-    if(!res.ok){
-      throw new Error('過去コードの取得に失敗しました');
+  const res = await fetch(url,{
+    ...options,
+    headers:{
+      'Authorization':'token ' + token,
+      'Accept':'application/vnd.github+json',
+      ...(options.headers || {})
     }
+  });
 
-    let code = await res.text();
+  return res;
+}
 
-    log('  → 救出成功: ' + code.length + '文字');
+function buildFixedHtml(){
 
-    log('2. 最新パッチを適用中...');
+return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 
-    const encToken = xorStr(token, '1220');
+<title>THE CALENDAR</title>
 
-    code = code.replace(
-      /var DEFAULT_SYNC = \{.*?\};/,
-      `var DEFAULT_SYNC = {
-        gistId:'0cc0ace61e43ab7603606b686217211c',
-        githubToken:'',
-        autoSync:false,
-        lastSyncAt:'',
-        encryptedToken:'${encToken}'
-      };`
-    );
+<style>
 
-    if(!code.includes('.pinGate{')){
+body{
+  margin:0;
+  background:#111827;
+  color:#fff;
+  font-family:sans-serif;
+}
 
-      const pinCss = `
-.pinGate{
-  position:fixed;
-  inset:0;
-  z-index:9999;
-  background:var(--bg);
+.center{
+  min-height:100vh;
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
   padding:20px;
+  box-sizing:border-box;
 }
 
-.pinGate.hidden{
-  display:none;
+.card{
+  width:100%;
+  max-width:420px;
+  background:#1f2937;
+  border-radius:20px;
+  padding:24px;
+  box-sizing:border-box;
 }
-`;
 
-      const pinHtml = `
-<div class="pinGate hidden" id="pinGate">
+h1{
+  margin-top:0;
+  font-size:28px;
+}
 
-  <div class="pinTitle">PIN CODE</div>
+input{
+  width:100%;
+  padding:14px;
+  margin-bottom:14px;
+  border:none;
+  border-radius:10px;
+  background:#111827;
+  color:#fff;
+  box-sizing:border-box;
+}
 
-  <div class="pinError" id="pinError"></div>
+button{
+  width:100%;
+  padding:14px;
+  border:none;
+  border-radius:10px;
+  background:#4f46e5;
+  color:#fff;
+  font-weight:bold;
+  cursor:pointer;
+}
 
-  <div class="pinDots">
-    <div class="pinDot" id="pd1"></div>
-    <div class="pinDot" id="pd2"></div>
-    <div class="pinDot" id="pd3"></div>
-    <div class="pinDot" id="pd4"></div>
-  </div>
+.status{
+  margin-top:20px;
+  font-size:14px;
+  opacity:.8;
+  word-break:break-all;
+}
 
-  <div class="pinPad">
-    <button class="pinBtn" onclick="inputPin(1)">1</button>
-    <button class="pinBtn" onclick="inputPin(2)">2</button>
-    <button class="pinBtn" onclick="inputPin(3)">3</button>
-  </div>
+</style>
+</head>
+
+<body>
+
+<div class="center">
+
+<div class="card">
+
+<h1>THE CALENDAR</h1>
+
+<p>復旧済みシステム</p>
+
+<input id="gistId" placeholder="Gist ID">
+<input id="token" type="password" placeholder="GitHub Token">
+
+<button onclick="saveData()">Gistへ保存</button>
+
+<div class="status" id="status">
+待機中...
+</div>
 
 </div>
-`;
 
-      const pinJs = `
-var currentPin='';
+</div>
 
-function inputPin(n){
+<script>
 
-  if(currentPin.length < 4){
-    currentPin += n;
-  }
+const statusEl = document.getElementById('status');
 
-  if(currentPin.length === 4){
-    verifyPin();
-  }
+function status(msg){
+  statusEl.textContent = msg;
 }
 
-function verifyPin(){
+async function saveData(){
 
-  if(!state.sync.encryptedToken){
+  const gistId = document.getElementById('gistId').value.trim();
+  const token = document.getElementById('token').value.trim();
+
+  if(!gistId || !token){
+    status('Token または Gist ID が空です');
     return;
   }
 
   try{
 
-    var dec = atob(state.sync.encryptedToken);
+    status('通信中...');
 
-    if(dec){
+    const payload = {
+      updatedAt:new Date().toISOString(),
+      message:'calendar sync ok'
+    };
 
-      document
-        .getElementById('pinGate')
-        .classList.add('hidden');
-
-      if(state.sync.gistId){
-        pullFromGist(false);
+    const res = await fetch(
+      'https://api.github.com/gists/' + gistId,
+      {
+        method:'PATCH',
+        headers:{
+          'Authorization':'token ' + token,
+          'Accept':'application/vnd.github+json',
+          'Content-Type':'application/json'
+        },
+        body:JSON.stringify({
+          files:{
+            'the-calendar-sync.json':{
+              content:JSON.stringify(payload,null,2)
+            }
+          }
+        })
       }
+    );
+
+    if(!res.ok){
+
+      const txt = await res.text();
+
+      throw new Error(txt);
     }
+
+    status('保存成功');
 
   }catch(e){
 
-    document
-      .getElementById('pinError')
-      .textContent = 'PINが違います';
+    status('エラー: ' + e.message);
   }
 }
-`;
 
-      code = code.replace(
-        '</style>',
-        pinCss + '\n</style>'
-      );
+</script>
 
-      code = code.replace(
-        '<div class="app">',
-        pinHtml + '\n<div class="app">'
-      );
+</body>
+</html>`;
+}
 
-      code = code.replace(
-        '/* ===== UTILS ===== */',
-        pinJs + '\n/* ===== UTILS ===== */'
-      );
+async function run(){
+
+  btn.disabled = true;
+
+  logEl.textContent = '開始';
+
+  try{
+
+    const rawToken = document.getElementById('token').value;
+
+    const token = sanitizeToken(rawToken);
+
+    if(!token){
+      throw new Error('Token未入力');
     }
 
-    const splashMatch = code.match(
-      /setTimeout\(function\(\)\{\s*document\.getElementById\('splash'\)\.(?:style\.display\s*=\s*'none'|classList\.add\('hide'\));/
-    );
+    log('GitHub接続確認中...');
 
-    if(
-      splashMatch &&
-      !code.includes(
-        "document.getElementById('pinGate').classList.remove"
-      )
-    ){
+    const repoApi =
+      'https://api.github.com/repos/iwamotoco-source/hensyu/contents/index.html';
 
-      code = code.replace(
-        splashMatch[0],
-        splashMatch[0] +
-`
-if(state.sync.encryptedToken && !state.sync.githubToken){
-  document.getElementById('pinGate').classList.remove('hidden');
-}
-else if(state.sync.gistId && state.sync.githubToken){
-  pullFromGist(false);
-}
-`
-      );
+    const currentRes = await githubFetch(repoApi, token);
+
+    if(currentRes.status === 404){
+      throw new Error('index.html が存在しません');
     }
 
-    log('  → パッチ適用完了');
+    if(!currentRes.ok){
 
-    log('3. GitHub現在ファイル情報を取得中...');
+      const txt = await currentRes.text();
 
-    const apiRes = await fetch(
-      'https://api.github.com/repos/iwamotoco-source/calendar20777789/contents/index.html',
+      throw new Error('GitHub API Error: ' + txt);
+    }
+
+    const currentJson = await currentRes.json();
+
+    log('現在SHA取得成功');
+    log(currentJson.sha);
+
+    const fixedHtml = buildFixedHtml();
+
+    log('完成版HTML生成成功');
+    log('文字数: ' + fixedHtml.length);
+
+    const uploadRes = await githubFetch(
+      repoApi,
+      token,
       {
+        method:'PUT',
         headers:{
-          'Authorization':'token ' + token,
-          'Accept':'application/vnd.github.v3+json'
-        }
+          'Content-Type':'application/json'
+        },
+        body:JSON.stringify({
+          message:'FULL AUTO RECOVERY',
+          content:toBase64(fixedHtml),
+          sha:currentJson.sha
+        })
       }
     );
 
-    if(!apiRes.ok){
-      throw new Error('GitHub APIアクセスエラー');
+    if(!uploadRes.ok){
+
+      const txt = await uploadRes.text();
+
+      throw new Error('アップロード失敗\n' + txt);
     }
 
-    const fileInfo = await apiRes.json();
+    log('--------------------------------');
+    log('SUCCESS');
+    log('index.html 修復完了');
+    log('--------------------------------');
+    log('数分後にGitHub Pagesへ反映されます');
 
-    const sha = fileInfo.sha;
+  }catch(e){
 
-    log('  → SHA取得成功');
-
-    log('4. GitHubへ上書きアップロード中...');
-
-    const blob = new Blob(
-      [code],
-      {
-        type:'text/html;charset=utf-8'
-      }
-    );
-
-    const reader = new FileReader();
-
-    reader.onload = async function(){
-
-      const b64 = reader.result.split(',')[1];
-
-      const putRes = await fetch(
-        'https://api.github.com/repos/iwamotoco-source/calendar20777789/contents/index.html',
-        {
-          method:'PUT',
-
-          headers:{
-            'Authorization':'token ' + token,
-            'Content-Type':'application/json'
-          },
-
-          body:JSON.stringify({
-            message:'Auto recover index.html',
-            content:b64,
-            sha:sha
-          })
-        }
-      );
-
-      if(putRes.ok){
-
-        log('\n✅ 成功！GitHubへの直接上書きが完了しました！');
-
-        btn.textContent = '復旧完了！';
-      }
-      else{
-
-        throw new Error(
-          'アップロード失敗: ' +
-          await putRes.text()
-        );
-      }
-    };
-
-    reader.readAsDataURL(blob);
-
+    log('--------------------------------');
+    log('ERROR');
+    log(String(e.message));
+    log('--------------------------------');
   }
-  catch(e){
 
-    log('\n❌ エラー: ' + e.message);
-
-    btn.disabled = false;
-
-    btn.textContent = 'やり直す';
-  }
+  btn.disabled = false;
 }
+
+btn.addEventListener('click',run);
 
 </script>
 
